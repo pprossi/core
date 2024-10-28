@@ -94,7 +94,7 @@ class Package implements PackageInterface
         }
         $this->packageKey = $packageKey;
         $this->packagePath = $packagePath;
-        $this->composerManifest = $packageManager->getComposerManifest($this->packagePath, $ignoreExtEmConf);
+		$this->composerManifest = $packageManager->getComposerManifest($this->packageKey, $this->packagePath, $ignoreExtEmConf);
         $this->loadFlagsFromComposerManifest();
         $this->createPackageMetaData($packageManager);
     }

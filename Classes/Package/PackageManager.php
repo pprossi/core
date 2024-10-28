@@ -39,6 +39,7 @@ use TYPO3\CMS\Core\SingletonInterface;
 use TYPO3\CMS\Core\Utility\ArrayUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\CMS\Core\Utility\PathUtility;
+use Composer\Factory;
 
 /**
  * The default TYPO3 Package Manager
@@ -823,12 +824,25 @@ class PackageManager implements SingletonInterface
      * @return \stdClass
      * @throws InvalidPackageManifestException
      * @internal
+	 *
+	 * @example TYPO3COMPOSERVERBOSE=true COMPOSER=composer-dev.json composer install
+	 * @example COMPOSER=composer-dev.json composer install
+	 * @example COMPOSER=composer-prod.json composer install
      */
-    public function getComposerManifest(string $manifestPath, bool $ignoreExtEmConf = false)
+	public function getComposerManifest(string $packageKey, string $manifestPath, bool $ignoreExtEmConf = false)
     {
+		if($packageKey === '__root__')
+		{
+			$composerJsonFile = $manifestPath .Factory::getComposerFile();
+		}
+		else
+    {
+			$composerJsonFile = $manifestPath .'composer.json';
+		}
+
+		if (file_exists($composerJsonFile)) {
         $composerManifest = new \stdClass();
-        if (file_exists($manifestPath . 'composer.json')) {
-            $json = file_get_contents($manifestPath . 'composer.json');
+			$json = file_get_contents($composerJsonFile);
             if ($json !== false) {
                 $composerManifest = json_decode($json);
             }
@@ -836,6 +850,10 @@ class PackageManager implements SingletonInterface
                 throw new InvalidPackageManifestException('The composer.json found for extension "' . PathUtility::basename($manifestPath) . '" is invalid!', 1439555561);
             }
         }
+
+		if( getenv('TYPO3COMPOSERVERBOSE') ){
+			echo 'Using: '.$composerJsonFile.PHP_EOL; // for debug info only
+		}
 
         if ($ignoreExtEmConf) {
             return $composerManifest;
