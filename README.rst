@@ -3,6 +3,7 @@ TYPO3 extension ``core``
 ========================
 
 Get package manager to respect composer standard compliant options.
+
 As packagemamager overrides hardcoded manifest name for __root__ level with composer.json it is'nt possible to use different manifests.
 
 Allows to use multiple composer.json files at root level depending on environment settings.
@@ -17,7 +18,7 @@ The generated lock file will use the same name: composer-dev.lock in this exampl
 
 With this patch you are able to use commandline option to switch between composer files with;
 
- > COMPOSER=composer-wasi.json composer install
+ > COMPOSER=composer-dev.json composer install
 
 get mor informations about loading of composer Files with:
 
