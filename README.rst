@@ -42,6 +42,12 @@ Typo3 12
 12.4 Packagemanager Patch composer standard compliant root manifest https://github.com/pprossi/core/commit/99dcf75b6ac26405f8126f99132b6b74981005ea.patch
 ==== ============================================================== =====================================================================================
 
+Typo3 13 (untested)
+
+==== ============================================================== =====================================================================================
+main Packagemanager Patch composer standard compliant root manifest https://github.com/pprossi/core/commit/addbda1dd45bdfd458c4fcf330515bdfc3ea5f6d.patch
+==== ============================================================== =====================================================================================
+
 Requirements:
 
 Install composer Patches Package.
