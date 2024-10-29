@@ -6,6 +6,9 @@ Get package manager to respect composer standard compliant options.
 
 As packagemamager overrides hardcoded manifest name for __root__ level with composer.json it is'nt possible to use different manifests.
 
+This Patch
+==========
+
 Allows to use multiple composer.json files at root level depending on environment settings.
 
 see: https://getcomposer.org/doc/03-cli.md#composer
@@ -16,11 +19,11 @@ see: https://getcomposer.org/doc/03-cli.md#composer
 
 The generated lock file will use the same name: composer-dev.lock in this example.
 
-With this patch you are able to use commandline option to switch between composer files with;
+With this patch you are able to use commandline option to switch between composer files with:
 
  > COMPOSER=composer-dev.json composer install
 
-get mor informations about loading of composer Files with:
+Get mor informations about loading of composer Files with:
 
  > TYPO3COMPOSERVERBOSE=true COMPOSER=composer-dev.json composer install
 
@@ -48,11 +51,15 @@ Typo3 13 (untested)
 main Packagemanager Patch composer standard compliant root manifest https://github.com/pprossi/core/commit/addbda1dd45bdfd458c4fcf330515bdfc3ea5f6d.patch
 ==== ============================================================== =====================================================================================
 
-Requirements:
+Requirements
+=============
 
 Install composer Patches Package.
 
- > composer install cweagans/composer-patches --save-dev
+<https://github.com/cweagans/composer-patches>
+
+ > composer install cweagans/composer-patches --dev
+
 
 and add to your extras section of your composer file:
 
