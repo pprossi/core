@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace TYPO3\CMS\Core\Tests\Functional\Database\Schema;
 
+use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\Schema\AbstractSchemaManager;
 use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\Table;
@@ -29,6 +30,7 @@ use Doctrine\DBAL\Types\Type;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\Attributes\Test;
+use PHPUnit\Framework\Attributes\TestWith;
 use Psr\Container\ContainerInterface;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Schema\DefaultTcaSchema;
@@ -50,17 +52,37 @@ use TYPO3\TestingFramework\Core\Testbase;
  */
 final class SchemaMigratorTest extends FunctionalTestCase
 {
+    private ?array $backupTableOptions = null;
+
     protected function setUp(): void
     {
         $this->initializeDatabase = false;
         parent::setUp();
+
+        $providedData = $this->providedData();
+        if (($providedData['emptyDefaultTableOptions'] ?? null) === true) {
+            $connection = $this->getConnectionPool()->getConnectionByName('Default');
+            $this->backupTableOptions = $connection->getParams()['defaultTableOptions'] ?? null;
+            \Closure::bind(static function () use ($connection): void {
+                unset($connection->params['defaultTableOptions']);
+            }, null, Connection::class)();
+        }
+
         $this->verifyCleanDatabaseState();
         $this->verifyNoDatabaseTablesExists();
     }
 
     protected function tearDown(): void
     {
-        $schemaManager = $this->get(ConnectionPool::class)->getConnectionByName('Default')->createSchemaManager();
+        $connection = $this->getConnectionPool()->getConnectionByName('Default');
+        if ($this->backupTableOptions !== null) {
+            $backupTableOptions = $this->backupTableOptions;
+            \Closure::bind(static function () use ($connection, $backupTableOptions): void {
+                $connection->params['defaultTableOptions'] = $backupTableOptions;
+            }, null, Connection::class)();
+            $this->backupTableOptions = null;
+        }
+        $schemaManager = $connection->createSchemaManager();
         // Clean up for next test
         if ($schemaManager->tablesExist(['a_test_table'])) {
             $schemaManager->dropTable('a_test_table');
@@ -179,9 +201,9 @@ final class SchemaMigratorTest extends FunctionalTestCase
     /**
      * Create the base table for all migration tests
      */
-    private function prepareTestTable(SchemaMigrator $schemaMigrator): void
+    private function prepareTestTable(SchemaMigrator $schemaMigrator, ?string $sqlCodeFile = null): void
     {
-        $sqlCode = file_get_contents(__DIR__ . '/../Fixtures/newTable.sql');
+        $sqlCode = file_get_contents($sqlCodeFile ?? __DIR__ . '/../Fixtures/newTable.sql');
         $result = $schemaMigrator->install($this->createSqlReader()->getCreateTableStatementArray($sqlCode));
         $this->verifyMigrationResult($result);
         $this->verifyCleanDatabaseState($sqlCode);
@@ -190,13 +212,15 @@ final class SchemaMigratorTest extends FunctionalTestCase
     /**
      * Helper to return the Doctrine Table object for the test table
      */
-    private function getTableDetails(): Table
+    private function getTableDetails(?string $tableName = null): Table
     {
-        return $this->getSchemaManager()->introspectTable('a_test_table');
+        return $this->getSchemaManager()->introspectTable($tableName ?? 'a_test_table');
     }
 
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function mergingTableDefinitionReturnsLatestColumnDefinition(): void
+    public function mergingTableDefinitionReturnsLatestColumnDefinition(bool $emptyDefaultTableOptions): void
     {
         $column1 = new Column('testfield', Type::getType('string'), ['length' => 100]);
         $column2 = new Column('testfield', Type::getType('string'), ['length' => 200]);
@@ -220,8 +244,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
         self::assertSame($column3, $firstTable->getColumn('testfield'));
     }
 
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function createNewTable(): void
+    public function createNewTable(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $statements = $this->createSqlReader()->getCreateTableStatementArray(file_get_contents(__DIR__ . '/../Fixtures/newTable.sql'));
@@ -232,8 +258,95 @@ final class SchemaMigratorTest extends FunctionalTestCase
         self::assertCount(6, $this->getTableDetails()->getColumns());
     }
 
+    #[Group('not-postgres')]
+    #[Group('not-sqlite')]
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function createNewTableIfNotExists(): void
+    public function createNewTableDefaultsToEngineInnoDB(bool $emptyDefaultTableOptions): void
+    {
+        $subject = $this->createSchemaMigrator();
+        $statements = $this->createSqlReader()->getCreateTableStatementArray(file_get_contents(__DIR__ . '/../Fixtures/newTable.sql'));
+        $updateSuggestions = $subject->getUpdateSuggestions($statements);
+        $selectedStatements = $updateSuggestions[ConnectionPool::DEFAULT_CONNECTION_NAME]['create_table'];
+        $result = $subject->migrate($statements, $selectedStatements);
+        $this->verifyMigrationResult($result);
+        self::assertTrue($this->getTableDetails()->hasOption('engine'));
+        self::assertEquals('InnoDB', $this->getTableDetails()->getOption('engine'));
+    }
+
+    #[Group('not-postgres')]
+    #[Group('not-sqlite')]
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
+    #[Test]
+    public function createNewTableWithExplicitEngineInnoDB(bool $emptyDefaultTableOptions): void
+    {
+        $subject = $this->createSchemaMigrator();
+        $statements = $this->createSqlReader()->getCreateTableStatementArray(file_get_contents(__DIR__ . '/../Fixtures/newTableInnoDB.sql'));
+        $updateSuggestions = $subject->getUpdateSuggestions($statements);
+        $selectedStatements = $updateSuggestions[ConnectionPool::DEFAULT_CONNECTION_NAME]['create_table'];
+        $result = $subject->migrate($statements, $selectedStatements);
+        $this->verifyMigrationResult($result);
+        self::assertTrue($this->getTableDetails()->hasOption('engine'));
+        self::assertEquals('InnoDB', $this->getTableDetails()->getOption('engine'));
+    }
+
+    #[Group('not-postgres')]
+    #[Group('not-sqlite')]
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
+    #[Test]
+    public function createNewTableWithExplicitEngineMyISAM(bool $emptyDefaultTableOptions): void
+    {
+        $subject = $this->createSchemaMigrator();
+        $statements = $this->createSqlReader()->getCreateTableStatementArray(file_get_contents(__DIR__ . '/../Fixtures/newTableMyISAM.sql'));
+        $updateSuggestions = $subject->getUpdateSuggestions($statements);
+        $selectedStatements = $updateSuggestions[ConnectionPool::DEFAULT_CONNECTION_NAME]['create_table'];
+        $result = $subject->migrate($statements, $selectedStatements);
+        $this->verifyMigrationResult($result);
+        self::assertCount(6, $this->getTableDetails()->getColumns());
+        self::assertTrue($this->getTableDetails()->hasOption('engine'));
+        self::assertEquals('MyISAM', $this->getTableDetails()->getOption('engine'));
+    }
+
+    #[Group('not-postgres')]
+    #[Group('not-sqlite')]
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
+    #[Test]
+    public function changeTableCharsetToDefaultIfConfigured(bool $emptyDefaultTableOptions): void
+    {
+        $subject = $this->createSchemaMigrator();
+
+        $this->prepareTestTable($subject);
+
+        $connection = $this->get(ConnectionPool::class)->getConnectionForTable('a_test_table');
+        $connection->executeStatement('ALTER TABLE a_test_table DEFAULT CHARACTER SET = utf8 COLLATE = utf8_unicode_ci');
+
+        self::assertTrue($this->getTableDetails()->hasOption('charset'));
+        $utf8PlatformCharset = $this->getTableDetails()->getOption('charset');
+        self::assertContains($utf8PlatformCharset, ['utf8', 'utf8mb3']);
+
+        $statements = $this->createSqlReader()->getCreateTableStatementArray(file_get_contents(__DIR__ . '/../Fixtures/newTable.sql'));
+        $updateSuggestions = $subject->getUpdateSuggestions($statements);
+        $selectedStatements = $updateSuggestions[ConnectionPool::DEFAULT_CONNECTION_NAME]['change'];
+        $result = $subject->migrate($statements, $selectedStatements);
+        $this->verifyMigrationResult($result);
+        self::assertTrue($this->getTableDetails()->hasOption('charset'));
+        if ($emptyDefaultTableOptions) {
+            // Stay as-is if not default table options are configured
+            self::assertEquals($utf8PlatformCharset, $this->getTableDetails()->getOption('charset'));
+        } else {
+            // Switch to utf8mb4 if default table options are configured
+            self::assertEquals('utf8mb4', $this->getTableDetails()->getOption('charset'));
+        }
+    }
+
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
+    #[Test]
+    public function createNewTableIfNotExists(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $statements = $this->createSqlReader()->getCreateTableStatementArray(file_get_contents(__DIR__ . '/../Fixtures/ifNotExists.sql'));
@@ -244,8 +357,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
         self::assertTrue($this->getSchemaManager()->tablesExist(['another_test_table']));
     }
 
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function addNewColumns(): void
+    public function addNewColumns(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $this->prepareTestTable($subject);
@@ -259,8 +374,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
         self::assertTrue($this->getTableDetails()->hasColumn('description'));
     }
 
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function changeExistingColumn(): void
+    public function changeExistingColumn(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $this->prepareTestTable($subject);
@@ -275,8 +392,83 @@ final class SchemaMigratorTest extends FunctionalTestCase
         self::assertEquals('Title', $this->getTableDetails()->getColumn('title')->getDefault());
     }
 
+    #[Group('not-postgres')]
+    #[Group('not-sqlite')]
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function notNullWithoutDefaultValue(): void
+    public function changeTableWithPossiblyMySQLCachedRowFormatCreateTableOption(bool $emptyDefaultTableOptions): void
+    {
+        $subject = $this->createSchemaMigrator();
+        $statements = $this->createSqlReader()->getCreateTableStatementArray(file_get_contents(__DIR__ . '/../Fixtures/newLargeTable.sql'));
+        $updateSuggestions = $subject->getUpdateSuggestions($statements);
+        $selectedStatements = $updateSuggestions[ConnectionPool::DEFAULT_CONNECTION_NAME]['create_table'];
+        $result = $subject->migrate($statements, $selectedStatements);
+        $this->verifyMigrationResult($result);
+        self::assertCount(8, $this->getTableDetails()->getColumns());
+
+        $connection = $this->get(ConnectionPool::class)->getConnectionForTable('a_test_table');
+        $connection->insert(
+            'a_test_table',
+            [
+                'pid' => 0,
+                'title' => 'Lorem ipsum dolor sit amet, consetetur sadipscing.',
+                'content' => str_repeat('Lorem ipsum dolor sit amet.', 100),
+            ]
+        );
+
+        $statements = $this->createSqlReader()->getCreateTableStatementArray(file_get_contents(__DIR__ . '/../Fixtures/newLargeTableWithMyISAMFixed.sql'));
+        $updateSuggestions = $subject->getUpdateSuggestions($statements);
+        $selectedStatements = $updateSuggestions[ConnectionPool::DEFAULT_CONNECTION_NAME]['change'];
+        $result = $subject->migrate($statements, $selectedStatements);
+        $this->verifyMigrationResult($result);
+        self::assertCount(8, $this->getTableDetails()->getColumns());
+        self::assertTrue($this->getTableDetails()->hasOption('engine'));
+        self::assertEquals('MyISAM', $this->getTableDetails()->getOption('engine'));
+
+        $queryBuilder = $connection->createQueryBuilder();
+        $rowFormat = $queryBuilder
+            ->select(
+                'tables.ROW_FORMAT AS row_format',
+            )
+            ->from('information_schema.TABLES', 'tables')
+            ->where(
+                $queryBuilder->expr()->eq(
+                    'TABLE_TYPE',
+                    $queryBuilder->createNamedParameter('BASE TABLE')
+                ),
+                $queryBuilder->expr()->eq(
+                    'TABLE_SCHEMA',
+                    $queryBuilder->createNamedParameter($connection->getDatabase())
+                ),
+                $queryBuilder->expr()->eq(
+                    'TABLE_NAME',
+                    $queryBuilder->createNamedParameter('a_test_table')
+                )
+            )
+            ->executeQuery()
+            ->fetchOne();
+
+        // Reports Dynamic although changed to FIXED (because of existing data and structure)
+        self::assertEquals('Dynamic', $rowFormat);
+
+        // …but MySQL cached "create_options" to fixed (and will apply these in upcoming InnoDB change)
+        self::assertTrue($this->getTableDetails()->hasOption('create_options'));
+        self::assertEquals(['row_format' => 'FIXED'], $this->getTableDetails()->getOption('create_options'));
+
+        // Change back to InnoDB
+        $statements = $this->createSqlReader()->getCreateTableStatementArray(file_get_contents(__DIR__ . '/../Fixtures/newLargeTable.sql'));
+        $updateSuggestions = $subject->getUpdateSuggestions($statements);
+        $selectedStatements = $updateSuggestions[ConnectionPool::DEFAULT_CONNECTION_NAME]['change'];
+        $result = $subject->migrate($statements, $selectedStatements);
+        $this->verifyMigrationResult($result);
+        self::assertEquals('InnoDB', $this->getTableDetails()->getOption('engine'));
+    }
+
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
+    #[Test]
+    public function notNullWithoutDefaultValue(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $this->prepareTestTable($subject);
@@ -288,8 +480,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
         self::assertTrue($this->getTableDetails()->getColumn('aTestField')->getNotnull());
     }
 
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function defaultNullWithoutNotNull(): void
+    public function defaultNullWithoutNotNull(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $this->prepareTestTable($subject);
@@ -302,8 +496,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
         self::assertNull($this->getTableDetails()->getColumn('aTestField')->getDefault());
     }
 
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function renameUnusedField(): void
+    public function renameUnusedField(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $this->prepareTestTable($subject);
@@ -316,8 +512,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
         self::assertTrue($this->getTableDetails()->hasColumn('zzz_deleted_hidden'));
     }
 
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function renameUnusedTable(): void
+    public function renameUnusedTable(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $this->prepareTestTable($subject);
@@ -330,8 +528,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
         self::assertContains('zzz_deleted_a_test_table', $this->getSchemaManager()->listTableNames());
     }
 
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function dropUnusedField(): void
+    public function dropUnusedField(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $this->prepareTestTable($subject);
@@ -373,8 +573,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
         self::assertFalse($this->getTableDetails()->hasColumn('zzz_deleted_testfield'));
     }
 
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function dropUnusedTable(): void
+    public function dropUnusedTable(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $this->prepareTestTable($subject);
@@ -392,8 +594,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
 
     #[Group('not-postgres')]
     #[Group('not-sqlite')]
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function installPerformsOnlyAddAndCreateOperations(): void
+    public function installPerformsOnlyAddAndCreateOperations(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $this->prepareTestTable($subject);
@@ -407,8 +611,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
         self::assertNotInstanceOf(BigIntType::class, $this->getTableDetails()->getColumn('pid')->getType());
     }
 
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function installDoesNotAddIndexOnChangedColumn(): void
+    public function installDoesNotAddIndexOnChangedColumn(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $this->prepareTestTable($subject);
@@ -419,8 +625,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
         self::assertFalse($this->getTableDetails()->hasIndex('title'));
     }
 
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function changeExistingIndex(): void
+    public function changeExistingIndex(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $this->prepareTestTable($subject);
@@ -449,8 +657,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
 
     #[Group('not-postgres')]
     #[Group('not-sqlite')]
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function installCanPerformChangeOperations(): void
+    public function installCanPerformChangeOperations(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $this->prepareTestTable($subject);
@@ -465,8 +675,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
     }
 
     #[Group('not-postgres')]
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function importStaticDataInsertsRecords(): void
+    public function importStaticDataInsertsRecords(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $this->prepareTestTable($subject);
@@ -478,17 +690,18 @@ final class SchemaMigratorTest extends FunctionalTestCase
         self::assertEquals(2, $connection->count('*', 'a_test_table', []));
     }
 
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function importStaticDataIgnoresTableDefinitions(): void
+    public function importStaticDataIgnoresTableDefinitions(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $sqlCode = file_get_contents(__DIR__ . '/../Fixtures/importStaticData.sql');
         $statements = $this->createSqlReader()->getStatementArray($sqlCode);
         $result = $subject->importStaticData($statements);
         // Table not created and insert statements are returning database errors in the result set, check for that !
-        self::assertIsArray($result);
         self::assertCount(2, $result);
-        foreach ($result as $hash => $message) {
+        foreach ($result as $message) {
             self::assertNotSame('', $message);
         }
         self::assertNotContains('another_test_table', $this->getSchemaManager()->listTableNames());
@@ -496,15 +709,17 @@ final class SchemaMigratorTest extends FunctionalTestCase
 
     #[Group('not-postgres')]
     #[Group('not-sqlite')]
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function changeTableEngine(): void
+    public function changeTableEngine(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $this->prepareTestTable($subject);
         $statements = $this->createSqlReader()->getCreateTableStatementArray(file_get_contents(__DIR__ . '/../Fixtures/alterTableEngine.sql'));
         $updateSuggestions = $subject->getUpdateSuggestions($statements);
         $index = array_keys($updateSuggestions[ConnectionPool::DEFAULT_CONNECTION_NAME]['change'])[0];
-        self::assertStringEndsWith(
+        self::assertStringContainsString(
             'ENGINE = MyISAM',
             $updateSuggestions[ConnectionPool::DEFAULT_CONNECTION_NAME]['change'][$index]
         );
@@ -513,56 +728,63 @@ final class SchemaMigratorTest extends FunctionalTestCase
         $this->verifyMigrationResult($result);
         $updateSuggestions = $subject->getUpdateSuggestions($statements);
         self::assertEmpty($updateSuggestions[ConnectionPool::DEFAULT_CONNECTION_NAME]['change']);
-        self::assertEmpty($updateSuggestions[ConnectionPool::DEFAULT_CONNECTION_NAME]['change']);
     }
 
     public static function textFieldDefaultValueTestDataProvider(): \Generator
     {
-        yield 'text not null default empty string value' => [
-            'fixtureFileName' => 'text-not-null-default-empty-string-value.sql',
-            'table' => 'a_textfield_test_table',
-            'fieldName' => 'testfield',
-            'assertionFileName' => 'text-not-null-default-empty-string-value.csv',
-            'expectedDefaultValue' => '',
-            'expectedNotNull' => true,
-            'expectDefaultValue' => true,
-        ];
-        yield 'text default empty string value' => [
-            'fixtureFileName' => 'text-default-empty-string-value.sql',
-            'table' => 'a_textfield_test_table',
-            'fieldName' => 'testfield',
-            'assertionFileName' => 'text-default-empty-string-value.csv',
-            'expectedDefaultValue' => '',
-            'expectedNotNull' => false,
-            'expectDefaultValue' => true,
-        ];
-        yield 'text default NULL' => [
-            'fixtureFileName' => 'text-default-null.sql',
-            'table' => 'a_textfield_test_table',
-            'fieldName' => 'testfield',
-            'assertionFileName' => 'text-default-null.csv',
-            'expectedDefaultValue' => null,
-            'expectedNotNull' => false,
-            'expectDefaultValue' => true,
-        ];
-        yield 'text not null default value string value' => [
-            'fixtureFileName' => 'text-not-null-default-value-string-value.sql',
-            'table' => 'a_textfield_test_table',
-            'fieldName' => 'testfield',
-            'assertionFileName' => 'text-not-null-default-value-string-value.csv',
-            'expectedDefaultValue' => 'database-default-value',
-            'expectedNotNull' => true,
-            'expectDefaultValue' => true,
-        ];
-        yield 'text not null default value string with single quote value' => [
-            'fixtureFileName' => 'text-not-null-default-value-string-with-single-quote-value.sql',
-            'table' => 'a_textfield_test_table',
-            'fieldName' => 'testfield',
-            'assertionFileName' => 'text-not-null-default-value-string-with-single-quote-value.csv',
-            'expectedDefaultValue' => "default-value with a single ' quote",
-            'expectedNotNull' => true,
-            'expectDefaultValue' => true,
-        ];
+        foreach ([false, true] as $emptyDefaultTableOptions) {
+            $suffix = $emptyDefaultTableOptions ? ' (empty defaultTableOptions)' : '';
+            yield 'text not null default empty string value' . $suffix => [
+                'fixtureFileName' => 'text-not-null-default-empty-string-value.sql',
+                'table' => 'a_textfield_test_table',
+                'fieldName' => 'testfield',
+                'assertionFileName' => 'text-not-null-default-empty-string-value.csv',
+                'expectedDefaultValue' => '',
+                'expectedNotNull' => true,
+                'expectDefaultValue' => true,
+                'emptyDefaultTableOptions' => $emptyDefaultTableOptions,
+            ];
+            yield 'text default empty string value' . $suffix => [
+                'fixtureFileName' => 'text-default-empty-string-value.sql',
+                'table' => 'a_textfield_test_table',
+                'fieldName' => 'testfield',
+                'assertionFileName' => 'text-default-empty-string-value.csv',
+                'expectedDefaultValue' => '',
+                'expectedNotNull' => false,
+                'expectDefaultValue' => true,
+                'emptyDefaultTableOptions' => $emptyDefaultTableOptions,
+            ];
+            yield 'text default NULL' . $suffix => [
+                'fixtureFileName' => 'text-default-null.sql',
+                'table' => 'a_textfield_test_table',
+                'fieldName' => 'testfield',
+                'assertionFileName' => 'text-default-null.csv',
+                'expectedDefaultValue' => null,
+                'expectedNotNull' => false,
+                'expectDefaultValue' => true,
+                'emptyDefaultTableOptions' => $emptyDefaultTableOptions,
+            ];
+            yield 'text not null default value string value' . $suffix => [
+                'fixtureFileName' => 'text-not-null-default-value-string-value.sql',
+                'table' => 'a_textfield_test_table',
+                'fieldName' => 'testfield',
+                'assertionFileName' => 'text-not-null-default-value-string-value.csv',
+                'expectedDefaultValue' => 'database-default-value',
+                'expectedNotNull' => true,
+                'expectDefaultValue' => true,
+                'emptyDefaultTableOptions' => $emptyDefaultTableOptions,
+            ];
+            yield 'text not null default value string with single quote value' . $suffix => [
+                'fixtureFileName' => 'text-not-null-default-value-string-with-single-quote-value.sql',
+                'table' => 'a_textfield_test_table',
+                'fieldName' => 'testfield',
+                'assertionFileName' => 'text-not-null-default-value-string-with-single-quote-value.csv',
+                'expectedDefaultValue' => "default-value with a single ' quote",
+                'expectedNotNull' => true,
+                'expectDefaultValue' => true,
+                'emptyDefaultTableOptions' => $emptyDefaultTableOptions,
+            ];
+        }
     }
 
     #[DataProvider('textFieldDefaultValueTestDataProvider')]
@@ -575,6 +797,7 @@ final class SchemaMigratorTest extends FunctionalTestCase
         ?string $expectedDefaultValue,
         bool $expectedNotNull,
         bool $expectDefaultValue,
+        bool $emptyDefaultTableOptions,
     ): void {
         $subject = $this->createSchemaMigrator();
         $statements = $this->createSqlReader()->getCreateTableStatementArray(file_get_contents(__DIR__ . '/../Fixtures/TextFieldDefaultValue/' . $fixtureFileName));
@@ -708,8 +931,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
         self::assertCSVDataSet(__DIR__ . '/../Fixtures/JsonFieldDefaultValue/Assertions/' . $assertionFileName);
     }
 
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function bigIntPrimaryKeyCrossDatabaseMaxValue(): void
+    public function bigIntPrimaryKeyCrossDatabaseMaxValue(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $statements = $this->createSqlReader()->getCreateTableStatementArray(file_get_contents(__DIR__ . '/../Fixtures/bigIntPrimaryKeyTable.sql'));
@@ -730,8 +955,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
 
     #[Group('not-postgres')]
     #[Group('not-sqlite')]
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function mediumTextToLargeTextColumChangeAndRevertWorksAsExpected(): void
+    public function mediumTextToLargeTextColumChangeAndRevertWorksAsExpected(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $sqlCode = file_get_contents(__DIR__ . '/../Fixtures/mediumTextTable.sql');
@@ -766,8 +993,10 @@ final class SchemaMigratorTest extends FunctionalTestCase
 
     #[Group('not-sqlite')]
     #[Group('not-postgres')]
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function enumTypeFieldCanBeCreated(): void
+    public function enumTypeFieldCanBeCreated(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $sqlCode = file_get_contents(__DIR__ . '/../Fixtures/enumTable.sql');
@@ -778,8 +1007,39 @@ final class SchemaMigratorTest extends FunctionalTestCase
 
     #[Group('not-sqlite')]
     #[Group('not-postgres')]
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
     #[Test]
-    public function setTypeFieldCanBeCreated(): void
+    public function renameAndRemoveUnusedEnumFieldWorks(bool $emptyDefaultTableOptions): void
+    {
+        $subject = $this->createSchemaMigrator();
+        $this->prepareTestTable($subject, __DIR__ . '/../Fixtures/enumTable.sql');
+        $removedEnumFieldSqlCode = file_get_contents(__DIR__ . '/../Fixtures/enumTable_removedEnumField.sql');
+        // rename unused enum field
+        $migrateStatements = $this->createSqlReader()->getCreateTableStatementArray($removedEnumFieldSqlCode);
+        $updateStatements = $subject->getUpdateSuggestions($migrateStatements, true);
+        $selectedUpdateStatements = $updateStatements[ConnectionPool::DEFAULT_CONNECTION_NAME]['change'];
+        $migratedResult = $subject->migrate($migrateStatements, $selectedUpdateStatements);
+        $this->verifyMigrationResult($migratedResult);
+        self::assertFalse($this->getTableDetails()->hasColumn('test1'));
+        self::assertTrue($this->getTableDetails()->hasColumn('zzz_deleted_test1'));
+        // remove renamed unused enum field
+        $migrateStatements = $this->createSqlReader()->getCreateTableStatementArray($removedEnumFieldSqlCode);
+        $updateStatements = $subject->getUpdateSuggestions($migrateStatements, true);
+        $selectedUpdateStatements = $updateStatements[ConnectionPool::DEFAULT_CONNECTION_NAME]['drop'];
+        $migratedResult = $subject->migrate($migrateStatements, $selectedUpdateStatements);
+        $this->verifyMigrationResult($migratedResult);
+        $this->verifyCleanDatabaseState($removedEnumFieldSqlCode);
+        self::assertFalse($this->getTableDetails()->hasColumn('test1'));
+        self::assertFalse($this->getTableDetails()->hasColumn('zzz_deleted_test1'));
+    }
+
+    #[Group('not-sqlite')]
+    #[Group('not-postgres')]
+    #[TestWith(['emptyDefaultTableOptions' => false])]
+    #[TestWith(['emptyDefaultTableOptions' => true])]
+    #[Test]
+    public function setTypeFieldCanBeCreated(bool $emptyDefaultTableOptions): void
     {
         $subject = $this->createSchemaMigrator();
         $sqlCode = file_get_contents(__DIR__ . '/../Fixtures/setTable.sql');

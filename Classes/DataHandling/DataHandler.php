@@ -2098,14 +2098,13 @@ class DataHandler
         // Handle native date/time fields
         $isNativeDateTimeField = false;
         $nativeDateTimeFieldFormat = '';
-        $nativeDateTimeFieldResetValue = '';
+        $nativeDateTimeFieldEmptyValue = '';
         $nativeDateTimeType = $tcaFieldConf['dbType'] ?? '';
         if (in_array($nativeDateTimeType, QueryHelper::getDateTimeTypes(), true)) {
             $isNativeDateTimeField = true;
             $dateTimeFormats = QueryHelper::getDateTimeFormats();
             $nativeDateTimeFieldFormat = $dateTimeFormats[$nativeDateTimeType]['format'];
             $nativeDateTimeFieldEmptyValue = $dateTimeFormats[$nativeDateTimeType]['empty'];
-            $nativeDateTimeFieldResetValue = $dateTimeFormats[$nativeDateTimeType]['reset'];
             if (empty($value)) {
                 $value = null;
             } else {
@@ -2166,13 +2165,15 @@ class DataHandler
 
         // Handle native date/time fields
         if ($isNativeDateTimeField) {
-            if ($tcaFieldConf['nullable'] ?? false) {
+            if ($tcaFieldConf['nullable'] ?? true) {
                 // Convert the timestamp back to a date/time if not null
                 $value = $value !== null ? gmdate($nativeDateTimeFieldFormat, $value) : null;
             } else {
                 // Convert the timestamp back to a date/time
-                $value = $value !== null ? gmdate($nativeDateTimeFieldFormat, $value) : $nativeDateTimeFieldResetValue;
+                $value = $value !== null ? gmdate($nativeDateTimeFieldFormat, $value) : $nativeDateTimeFieldEmptyValue;
             }
+        } elseif ((string)$value === '' && ($tcaFieldConf['nullable'] ?? false)) {
+            $value = null;
         } else {
             // Ensure value is always an int if no native field is used
             $value = (int)$value;
@@ -3571,6 +3572,13 @@ class DataHandler
         $data = [];
         $nonFields = array_unique(GeneralUtility::trimExplode(',', 'uid,perms_userid,perms_groupid,perms_user,perms_group,perms_everybody,t3ver_oid,t3ver_wsid,t3ver_state,t3ver_stage,' . $excludeFields, true));
         BackendUtility::workspaceOL($table, $row, $this->BE_USER->workspace);
+        if (BackendUtility::isTableWorkspaceEnabled($table)
+            && $this->BE_USER->workspace > 0
+            && VersionState::tryFrom($row['t3ver_state'] ?? 0) === VersionState::DELETE_PLACEHOLDER
+        ) {
+            // The to-copy record turns out to be a delete placeholder. Those do not make sense to be copied and are skipped.
+            return null;
+        }
         $row = BackendUtility::purgeComputedPropertiesFromRecord($row);
 
         // Initializing:
@@ -7590,8 +7598,9 @@ class DataHandler
     {
         if ($this->tcaSchemaFactory->has($table)) {
             $liveUid = ($row['t3ver_oid'] ?? null) ?: ($row['uid'] ?? null);
+            $fullRow = $this->recordInfo($table, $liveUid);
             return [
-                'header' => BackendUtility::getRecordTitle($table, $row),
+                'header' => BackendUtility::getRecordTitle($table, $fullRow ?: $row),
                 'pid' => $row['pid'] ?? null,
                 'event_pid' => $this->eventPid($table, (int)$liveUid, $row['pid'] ?? null),
                 't3ver_state' => $this->tcaSchemaFactory->get($table)->isWorkspaceAware() ? ($row['t3ver_state'] ?? '') : '',
@@ -8492,7 +8501,10 @@ class DataHandler
             $queryBuilder
                 ->select('uid')
                 ->from('pages')
-                ->where($queryBuilder->expr()->eq('pid', $queryBuilder->createNamedParameter($pid, Connection::PARAM_INT)))
+                ->where(
+                    $queryBuilder->expr()->eq('pid', $queryBuilder->createNamedParameter($pid, Connection::PARAM_INT)),
+                    $queryBuilder->expr()->eq('sys_language_uid', $queryBuilder->createNamedParameter(0, Connection::PARAM_INT)),
+                )
                 ->orderBy('sorting', 'DESC');
             if (!$this->admin) {
                 $queryBuilder->andWhere($this->BE_USER->getPagePermsClause(Permission::PAGE_SHOW));

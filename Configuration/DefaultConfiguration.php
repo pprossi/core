@@ -38,7 +38,7 @@ return [
     ],
     'GFX' => [ // Configuration of the image processing features in TYPO3. 'IM' and 'GD' are short for ImageMagick and GD library respectively.
         'thumbnails' => true,
-        'imagefile_ext' => 'gif,jpg,jpeg,tif,tiff,bmp,pcx,tga,png,pdf,ai,svg,webp',
+        'imagefile_ext' => 'gif,jpg,jpeg,tif,tiff,bmp,pcx,tga,png,pdf,ai,svg,webp,avif',
         'processor_enabled' => true,
         'processor_path' => '/usr/bin/',
         'processor' => 'ImageMagick',
@@ -358,6 +358,7 @@ return [
             // In special cases the mime type is not detected correctly.
             // Use this array only if the automatic detection does not work correct!
             'fileExtensionToMimeType' => [
+                'avif' => 'image/avif',
                 'svg' => 'image/svg+xml',
                 'youtube' => 'video/youtube',
                 'vimeo' => 'video/vimeo',
@@ -574,7 +575,7 @@ return [
                             \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsRemoveUnused::class,
                         ],
                     ],
-                    \TYPO3\CMS\Backend\Form\FormDataProvider\TcaTypesShowitem::class => [
+                    \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsProcessFieldLabels::class => [
                         'depends' => [
                             \TYPO3\CMS\Backend\Form\FormDataProvider\DatabaseRecordTypeValue::class,
                             \TYPO3\CMS\Backend\Form\FormDataProvider\DatabaseSystemLanguageRows::class,
@@ -583,14 +584,8 @@ return [
                             \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsRemoveUnused::class,
                         ],
                     ],
-                    \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsProcessFieldLabels::class => [
-                        'depends' => [
-                            \TYPO3\CMS\Backend\Form\FormDataProvider\TcaTypesShowitem::class,
-                        ],
-                    ],
                     \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsProcessFieldDescriptions::class => [
                         'depends' => [
-                            \TYPO3\CMS\Backend\Form\FormDataProvider\TcaTypesShowitem::class,
                             \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsProcessFieldLabels::class,
                         ],
                     ],
@@ -640,7 +635,7 @@ return [
                     \TYPO3\CMS\Backend\Form\FormDataProvider\TcaSlug::class => [
                         'depends' => [
                             \TYPO3\CMS\Backend\Form\FormDataProvider\DatabaseRecordOverrideValues::class,
-                            \TYPO3\CMS\Backend\Form\FormDataProvider\TcaTypesShowitem::class,
+                            \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsProcessFieldLabels::class,
                         ],
                     ],
                     \TYPO3\CMS\Backend\Form\FormDataProvider\TcaGroup::class => [
@@ -659,7 +654,6 @@ return [
                             \TYPO3\CMS\Backend\Form\FormDataProvider\DatabasePageRootline::class,
                             \TYPO3\CMS\Backend\Form\FormDataProvider\PageTsConfigMerged::class,
                             \TYPO3\CMS\Backend\Form\FormDataProvider\InitializeProcessedTca::class,
-                            \TYPO3\CMS\Backend\Form\FormDataProvider\TcaTypesShowitem::class,
                             \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsRemoveUnused::class,
                             \TYPO3\CMS\Backend\Form\FormDataProvider\TcaFlexPrepare::class,
                             \TYPO3\CMS\Backend\Form\FormDataProvider\TcaFolder::class,
@@ -842,7 +836,12 @@ return [
                     ],
                 ],
                 'flexFormSegment' => [
-                    \TYPO3\CMS\Backend\Form\FormDataProvider\DatabaseRowDefaultValues::class => [],
+                    \TYPO3\CMS\Backend\Form\FormDataProvider\DatabaseRowDateTimeFields::class => [],
+                    \TYPO3\CMS\Backend\Form\FormDataProvider\DatabaseRowDefaultValues::class => [
+                        'depends' => [
+                            \TYPO3\CMS\Backend\Form\FormDataProvider\DatabaseRowDateTimeFields::class,
+                        ],
+                    ],
                     \TYPO3\CMS\Backend\Form\FormDataProvider\SiteResolving::class => [
                         'depends' => [
                             \TYPO3\CMS\Backend\Form\FormDataProvider\DatabaseRowDefaultValues::class,
@@ -1177,7 +1176,7 @@ return [
                             \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsProcessShowitem::class,
                         ],
                     ],
-                    \TYPO3\CMS\Backend\Form\FormDataProvider\TcaTypesShowitem::class => [
+                    \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsProcessFieldLabels::class => [
                         'depends' => [
                             \TYPO3\CMS\Backend\Form\FormDataProvider\DatabaseRecordTypeValue::class,
                             \TYPO3\CMS\Backend\Form\FormDataProvider\DatabaseSystemLanguageRows::class,
@@ -1185,14 +1184,8 @@ return [
                             \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsRemoveUnused::class,
                         ],
                     ],
-                    \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsProcessFieldLabels::class => [
-                        'depends' => [
-                            \TYPO3\CMS\Backend\Form\FormDataProvider\TcaTypesShowitem::class,
-                        ],
-                    ],
                     \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsProcessFieldDescriptions::class => [
                         'depends' => [
-                            \TYPO3\CMS\Backend\Form\FormDataProvider\TcaTypesShowitem::class,
                             \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsProcessFieldLabels::class,
                         ],
                     ],
@@ -1230,7 +1223,7 @@ return [
                             \TYPO3\CMS\Backend\Form\FormDataProvider\DatabasePageRootline::class,
                             \TYPO3\CMS\Backend\Form\FormDataProvider\PageTsConfigMerged::class,
                             \TYPO3\CMS\Backend\Form\FormDataProvider\InitializeProcessedTca::class,
-                            \TYPO3\CMS\Backend\Form\FormDataProvider\TcaTypesShowitem::class,
+                            \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsProcessFieldLabels::class,
                             \TYPO3\CMS\Backend\Form\FormDataProvider\TcaColumnsRemoveUnused::class,
                             \TYPO3\CMS\Backend\Form\FormDataProvider\TcaCheckboxItems::class,
                         ],

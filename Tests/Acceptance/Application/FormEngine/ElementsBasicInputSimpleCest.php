@@ -44,6 +44,9 @@ final class ElementsBasicInputSimpleCest extends AbstractElementsBasicCest
         $I->click($editRecordLinkCssPath);
         $I->waitForElementNotVisible('#t3js-ui-block');
         $I->waitForText('Edit Form', 3, 'h1');
+
+        // Make sure the test operates on the "input" tab
+        $I->click('input');
     }
 
     /**
@@ -187,5 +190,241 @@ final class ElementsBasicInputSimpleCest extends AbstractElementsBasicCest
     public function simpleInputFields(ApplicationTester $I, Example $testData): void
     {
         $this->runInputFieldTest($I, $testData);
+    }
+
+    /**
+     * Data provider to run form validation
+     */
+    private function simpleInputFieldsValidationDataProvider(): array
+    {
+        return [
+            [
+                'comment' => 'Check simple field',
+                'label' => 'input_1',
+                'testSequence' => [
+                    [
+                        'inputValue' => '',
+                        'expectedValue' => '',
+                        'expectedInternalValue' => '',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => 'abcdef',
+                        'expectedValue' => 'abcdef',
+                        'expectedInternalValue' => 'abcdef',
+                        'expectError' => false,
+                    ],
+                ],
+            ],
+            // @todo: Implement special test for read-only field, as it is not testable by `runInputFieldValidationTest`.
+            // [
+            //     'comment' => 'Check field: readOnly',
+            //     'label' => 'input_40',
+            //     'testSequence' => [
+            //         [
+            //             'inputValue' => 'abcdef',
+            //             'expectedValue' => 'lipsum',
+            //         ],
+            //     ],
+            // ],
+            [
+                'comment' => 'Check field: size=10',
+                'label' => 'input_2',
+                'testSequence' => [
+                    [
+                        'inputValue' => '1234567890',
+                        'expectedValue' => '1234567890',
+                        'expectedInternalValue' => '1234567890',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => '1234567890a',
+                        'expectedValue' => '1234567890a',
+                        'expectedInternalValue' => '1234567890a',
+                        'expectError' => false,
+                    ],
+                ],
+            ],
+            [
+                'comment' => 'Check validation: max=4',
+                'label' => 'input_3',
+                'testSequence' => [
+                    [
+                        'inputValue' => '',
+                        'expectedValue' => '',
+                        'expectedInternalValue' => '',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => ' ',
+                        'expectedValue' => ' ',
+                        'expectedInternalValue' => ' ',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => '     ',
+                        'expectedValue' => '    ', // browser blocks input of 5th character
+                        'expectedInternalValue' => '    ',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => 'a',
+                        'expectedValue' => 'a',
+                        'expectedInternalValue' => 'a',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => 'abc',
+                        'expectedValue' => 'abc',
+                        'expectedInternalValue' => 'abc',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => 'abcd',
+                        'expectedValue' => 'abcd',
+                        'expectedInternalValue' => 'abcd',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => 'abcde',
+                        'expectedValue' => 'abcd', // browser blocks input of 5th character
+                        'expectedInternalValue' => 'abcd',
+                        'expectError' => false,
+                    ],
+                ],
+            ],
+            [
+                'comment' => 'Check validation: min=4',
+                'label' => 'input_41',
+                'testSequence' => [
+                    [
+                        'inputValue' => '',
+                        'expectedValue' => '',
+                        'expectedInternalValue' => '',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => ' ',
+                        'expectedValue' => ' ',
+                        'expectedInternalValue' => ' ',
+                        'expectError' => true,
+                    ],
+                    [
+                        'inputValue' => '    ',
+                        'expectedValue' => '    ',
+                        'expectedInternalValue' => '    ',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => 'a',
+                        'expectedValue' => 'a',
+                        'expectedInternalValue' => 'a',
+                        'expectError' => true,
+                    ],
+                    [
+                        'inputValue' => 'abc',
+                        'expectedValue' => 'abc',
+                        'expectedInternalValue' => 'abc',
+                        'expectError' => true,
+                    ],
+                    [
+                        'inputValue' => 'abcd',
+                        'expectedValue' => 'abcd',
+                        'expectedInternalValue' => 'abcd',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => 'abcde',
+                        'expectedValue' => 'abcde',
+                        'expectedInternalValue' => 'abcde',
+                        'expectError' => false,
+                    ],
+                ],
+            ],
+            [
+                'comment' => 'Check validation: min=4, max=8',
+                'label' => 'input_42',
+                'testSequence' => [
+                    [
+                        'inputValue' => '',
+                        'expectedValue' => '',
+                        'expectedInternalValue' => '',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => 'abc',
+                        'expectedValue' => 'abc',
+                        'expectedInternalValue' => 'abc',
+                        'expectError' => true,
+                    ],
+                    [
+                        'inputValue' => 'abcd',
+                        'expectedValue' => 'abcd',
+                        'expectedInternalValue' => 'abcd',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => 'abcde',
+                        'expectedValue' => 'abcde',
+                        'expectedInternalValue' => 'abcde',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => 'abcdefg',
+                        'expectedValue' => 'abcdefg',
+                        'expectedInternalValue' => 'abcdefg',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => 'abcdefgh',
+                        'expectedValue' => 'abcdefgh',
+                        'expectedInternalValue' => 'abcdefgh',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => 'abcdefghi',
+                        'expectedValue' => 'abcdefgh', // browser blocks input of 9th character
+                        'expectedInternalValue' => 'abcdefgh',
+                        'expectError' => false,
+                    ],
+                ],
+            ],
+            [
+                'comment' => 'Check validation: min=4, max=4',
+                'label' => 'input_43',
+                'testSequence' => [
+                    [
+                        'inputValue' => '',
+                        'expectedValue' => '',
+                        'expectedInternalValue' => '',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => 'abc',
+                        'expectedValue' => 'abc',
+                        'expectedInternalValue' => 'abc',
+                        'expectError' => true,
+                    ],
+                    [
+                        'inputValue' => 'abcd',
+                        'expectedValue' => 'abcd',
+                        'expectedInternalValue' => 'abcd',
+                        'expectError' => false,
+                    ],
+                    [
+                        'inputValue' => 'abcde',
+                        'expectedValue' => 'abcd', // browser blocks input of 5th character
+                        'expectedInternalValue' => 'abcd',
+                        'expectError' => false,
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    #[DataProvider('simpleInputFieldsValidationDataProvider')]
+    public function simpleInputFieldsValidation(ApplicationTester $I, Example $testData): void
+    {
+        $this->runInputFieldValidationTest($I, $testData);
     }
 }

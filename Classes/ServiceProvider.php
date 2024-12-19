@@ -25,6 +25,7 @@ use Symfony\Contracts\EventDispatcher\EventDispatcherInterface as SymfonyEventDi
 use TYPO3\CMS\Core\Adapter\EventDispatcherAdapter as SymfonyEventDispatcher;
 use TYPO3\CMS\Core\Cache\CacheManager;
 use TYPO3\CMS\Core\Cache\Frontend\FrontendInterface;
+use TYPO3\CMS\Core\Configuration\FlexForm\FlexFormTools;
 use TYPO3\CMS\Core\Configuration\Loader\YamlFileLoader;
 use TYPO3\CMS\Core\Core\Bootstrap;
 use TYPO3\CMS\Core\Core\Environment;
@@ -36,6 +37,7 @@ use TYPO3\CMS\Core\Imaging\IconRegistry;
 use TYPO3\CMS\Core\Package\AbstractServiceProvider;
 use TYPO3\CMS\Core\Package\PackageManager;
 use TYPO3\CMS\Core\Resource\ResourceFactory;
+use TYPO3\CMS\Core\Resource\Security\FileNameValidator;
 use TYPO3\CMS\Core\Type\Map;
 use TYPO3\CMS\Core\TypoScript\Tokenizer\LossyTokenizer;
 
@@ -92,6 +94,7 @@ class ServiceProvider extends AbstractServiceProvider
             Localization\LanguageStore::class => self::getLanguageStore(...),
             Localization\Locales::class => self::getLocales(...),
             Localization\LocalizationFactory::class => self::getLocalizationFactory(...),
+            Mail\Mailer::class => self::getMailer(...),
             Mail\TransportFactory::class => self::getMailTransportFactory(...),
             Messaging\FlashMessageService::class => self::getFlashMessageService(...),
             Middleware\ResponsePropagation::class => self::getResponsePropagationMiddleware(...),
@@ -106,6 +109,7 @@ class ServiceProvider extends AbstractServiceProvider
             Resource\Driver\DriverRegistry::class => self::getDriverRegistry(...),
             Resource\ProcessedFileRepository::class => self::getProcessedFileRepository(...),
             Resource\ResourceFactory::class => self::getResourceFactory(...),
+            Resource\Security\FileNameValidator::class => self::getFileNameValidator(...),
             Resource\StorageRepository::class => self::getStorageRepository(...),
             Service\DependencyOrderingService::class => self::getDependencyOrderingService(...),
             Service\FlexFormService::class => self::getFlexFormService(...),
@@ -414,11 +418,21 @@ class ServiceProvider extends AbstractServiceProvider
         ]);
     }
 
+    public static function getMailer(ContainerInterface $container): Mail\Mailer
+    {
+        return self::new($container, Mail\Mailer::class, [
+            null,
+            $container->get(EventDispatcherInterface::class),
+        ]);
+    }
+
     public static function getMailTransportFactory(ContainerInterface $container): Mail\TransportFactory
     {
         return self::new($container, Mail\TransportFactory::class, [
             $container->get(SymfonyEventDispatcher::class),
             $container->get(Log\LogManager::class),
+            $container->get(Log\LogManager::class)->getLogger(Mail\TransportFactory::class),
+            $container->get(Resource\Security\FileNameValidator::class),
         ]);
     }
 
@@ -493,11 +507,18 @@ class ServiceProvider extends AbstractServiceProvider
         ]);
     }
 
+    public static function getFileNameValidator(ContainerInterface $container): Resource\Security\FileNameValidator
+    {
+        return new FileNameValidator();
+    }
+
     public static function getStorageRepository(ContainerInterface $container): Resource\StorageRepository
     {
         return self::new($container, Resource\StorageRepository::class, [
             $container->get(EventDispatcherInterface::class),
             $container->get(Resource\Driver\DriverRegistry::class),
+            $container->get(FlexFormTools::class),
+            $container->get(Log\LogManager::class)->getLogger(Resource\StorageRepository::class),
         ]);
     }
 
@@ -554,10 +575,11 @@ class ServiceProvider extends AbstractServiceProvider
             $container->get(Http\RequestHandler::class),
             $container->get('core.middlewares'),
         );
-        return new Http\Application(
+
+        return self::new($container, Http\Application::class, [
             $requestHandler,
             $container->get(Configuration\ConfigurationManager::class),
-        );
+        ]);
     }
 
     public static function getHttpRequestHandler(ContainerInterface $container): Http\RequestHandler
@@ -628,7 +650,12 @@ class ServiceProvider extends AbstractServiceProvider
 
     public static function getRuntimeCache(ContainerInterface $container): FrontendInterface
     {
-        return Bootstrap::createCache('runtime');
+        $defaultBackend = Cache\Backend\TransientMemoryBackend::class;
+        $cacheBackend = $GLOBALS['TYPO3_CONF_VARS']['SYS']['caching']['cacheConfigurations']['runtime']['backend'] ?? $defaultBackend;
+        if (!array_key_exists(Cache\Backend\TransientBackendInterface::class, class_implements($cacheBackend))) {
+            $cacheBackend = $defaultBackend;
+        }
+        return Bootstrap::createCache('runtime', false, $cacheBackend);
     }
 
     public static function getCoreMiddlewares(ContainerInterface $container): \ArrayObject

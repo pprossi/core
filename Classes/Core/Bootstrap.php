@@ -237,7 +237,8 @@ class Bootstrap
             return true;
         }
 
-        // @deprecated All code below is deprecated and can be removed with TYPO3 v14.0 and replaced with `return false;`
+        // @deprecated All code below is deprecated and can be removed with TYPO3 v15.0 (or later as
+        //              it does not hurt to keep this migration for now) and replaced with `return false;`
 
         // All other cases will probably need some migration work
         $migrated = false;
@@ -330,10 +331,14 @@ class Bootstrap
      *
      * @param string $identifier
      * @param bool $disableCaching
+     * @param class-string<BackendInterface>|null $enforcedCacheBackend
      * @internal
      */
-    public static function createCache(string $identifier, bool $disableCaching = false): FrontendInterface
-    {
+    public static function createCache(
+        string $identifier,
+        bool $disableCaching = false,
+        ?string $enforcedCacheBackend = null
+    ): FrontendInterface {
         $cacheConfigurations = $GLOBALS['TYPO3_CONF_VARS']['SYS']['caching']['cacheConfigurations'] ?? [];
         $cacheConfigurations['di']['frontend'] = PhpFrontend::class;
         $cacheConfigurations['di']['backend'] = ContainerBackend::class;
@@ -341,7 +346,7 @@ class Bootstrap
         $configuration = $cacheConfigurations[$identifier] ?? [];
 
         $frontend = $configuration['frontend'] ?? VariableFrontend::class;
-        $backend = $configuration['backend'] ?? Typo3DatabaseBackend::class;
+        $backend = $enforcedCacheBackend ?? $configuration['backend'] ?? Typo3DatabaseBackend::class;
         $options = $configuration['options'] ?? [];
 
         if ($disableCaching) {

@@ -25,155 +25,6 @@ use TYPO3\TestingFramework\Core\Unit\UnitTestCase;
 final class CharsetConverterTest extends UnitTestCase
 {
     #[Test]
-    public function utf8DecodeACharacterToAscii(): void
-    {
-        $charsetConverter = new CharsetConverter();
-
-        $string = "\x41"; // A
-        self::assertSame(1, mb_strlen($string));
-        self::assertSame(1, strlen($string));
-        self::assertSame('UTF-8', mb_detect_encoding($string, ['UTF-8', 'ASCII']));
-
-        // test decoding to ascii
-        self::assertSame('A', $charsetConverter->utf8_decode($string, 'ascii'));
-        self::assertSame('A', $charsetConverter->utf8_decode($string, 'ascii', true));
-
-        $targetString = $charsetConverter->utf8_decode($string, 'ascii');
-        self::assertSame('ASCII', mb_detect_encoding($targetString, ['ASCII', 'UTF-8']));
-    }
-
-    #[Test]
-    public function utf8DecodeACharacterToIso885915(): void
-    {
-        $charsetConverter = new CharsetConverter();
-
-        $string = "\xE2\x82\xAC"; // €
-        self::assertSame(1, mb_strlen($string));
-        self::assertSame(3, strlen($string));
-        self::assertSame('UTF-8', mb_detect_encoding($string, ['ASCII', 'UTF-8']));
-
-        // test decoding to ascii
-        self::assertSame('?', $charsetConverter->utf8_decode($string, 'ascii'));
-        self::assertSame('&#x20ac;', $charsetConverter->utf8_decode($string, 'ascii', true));
-
-        // test decoding to iso-8859-15
-        $targetString = $charsetConverter->utf8_decode($string, 'iso-8859-15');
-        self::assertSame('ISO-8859-15', mb_detect_encoding($targetString, ['ASCII', 'UTF-8', 'ISO-8859-15']));
-        self::assertNotSame($string, $targetString);
-    }
-
-    #[Test]
-    public function utf8DecodeEuroSignCharacterToIso885915(): void
-    {
-        $charsetConverter = new CharsetConverter();
-
-        $string = "\xE2\x82\xAC"; // €
-        self::assertSame(1, mb_strlen($string));
-        self::assertSame(3, strlen($string));
-        self::assertSame('UTF-8', mb_detect_encoding($string, ['ASCII', 'UTF-8']));
-
-        // test decoding to ascii
-        self::assertSame('?', $charsetConverter->utf8_decode($string, 'ascii'));
-        self::assertSame('&#x20ac;', $charsetConverter->utf8_decode($string, 'ascii', true));
-
-        // test decoding to iso-8859-15
-        $targetString = $charsetConverter->utf8_decode($string, 'iso-8859-15');
-        self::assertSame('ISO-8859-15', mb_detect_encoding($targetString, ['ASCII', 'UTF-8', 'ISO-8859-15']));
-        self::assertNotSame($string, $targetString);
-    }
-
-    #[Test]
-    public function utf8DecodeAKanjiToBig5(): void
-    {
-        $charsetConverter = new CharsetConverter();
-
-        $string = "\xE6\xBC\x80"; // 漀
-        self::assertSame(1, mb_strlen($string));
-        self::assertSame(3, strlen($string));
-        self::assertSame('UTF-8', mb_detect_encoding($string, ['ASCII', 'UTF-8']));
-
-        // test decoding to ascii
-        self::assertSame('?', $charsetConverter->utf8_decode($string, 'ascii'));
-        self::assertSame('&#x6f00;', $charsetConverter->utf8_decode($string, 'ascii', true));
-
-        // test decoding to big5
-        $targetString = $charsetConverter->utf8_decode($string, 'big5');
-        self::assertSame('BIG-5', mb_detect_encoding($targetString, ['ASCII', 'UTF-8', 'BIG-5']));
-        self::assertNotSame($string, $targetString);
-    }
-
-    #[Test]
-    public function convertingAUtf8EmojiSignToNonExistingAsciiRepresentationResultsInAQuestionMarkSign(): void
-    {
-        $charsetConverter = new CharsetConverter();
-
-        $string = "\xF0\x9F\x98\x82"; // 😂
-        self::assertSame(1, mb_strlen($string));
-        self::assertSame(4, strlen($string));
-        self::assertSame('UTF-8', mb_detect_encoding($string, ['ASCII', 'UTF-8']));
-
-        // test decoding to ascii
-        self::assertSame('?', $charsetConverter->utf8_decode($string, 'ascii'));
-        self::assertSame('&#x1f602;', $charsetConverter->utf8_decode($string, 'ascii', true));
-    }
-
-    #[Test]
-    public function utf8DecodeToUtf8ReturnsTheSameSign(): void
-    {
-        self::assertSame(
-            "\xF0\x9F\x98\x82",
-            (new CharsetConverter())->utf8_decode("\xF0\x9F\x98\x82", 'utf-8')
-        );
-    }
-
-    #[Test]
-    public function utf8EncodeIso885915ACharacter(): void
-    {
-        $string = "\x41"; // A
-        $targetString = (new CharsetConverter())->utf8_encode($string, 'iso-8859-15');
-
-        self::assertSame(1, strlen($string));
-        self::assertSame('A', $targetString);
-        self::assertSame(1, mb_strlen($targetString));
-        self::assertSame(1, strlen($targetString));
-        self::assertSame($string, $targetString);
-    }
-
-    #[Test]
-    public function utf8EncodeIso885915EuroSign(): void
-    {
-        $string = "\xA4"; // € sign encoded as iso-8859-15
-        $targetString = (new CharsetConverter())->utf8_encode($string, 'iso-8859-15');
-
-        self::assertSame('€', $targetString);
-        self::assertSame(1, mb_strlen($targetString));
-        self::assertSame(3, strlen($targetString));
-        self::assertNotSame($string, $targetString);
-    }
-
-    #[Test]
-    public function utf8EncodeABig5EncodedSign(): void
-    {
-        $string = "\xA2\xC5"; // 〣 sign encoded as big5
-        $targetString =  (new CharsetConverter())->utf8_encode($string, 'big5');
-
-        self::assertSame(2, strlen($string));
-        self::assertSame('〣', $targetString);
-        self::assertSame(1, mb_strlen($targetString));
-        self::assertSame(3, strlen($targetString));
-        self::assertNotSame($string, $targetString);
-    }
-
-    #[Test]
-    public function utf8EncodeAlreadyUtf8EncodedSign(): void
-    {
-        self::assertSame(
-            "\xF0\x9F\x98\x82",
-            (new CharsetConverter())->utf8_encode("\xF0\x9F\x98\x82", 'utf-8')
-        );
-    }
-
-    #[Test]
     public function utf8ToNumberArray(): void
     {
         $string = "\xF0\x9F\x98\x82 &ndash; a joyful emoji";
@@ -197,16 +48,10 @@ final class CharsetConverterTest extends UnitTestCase
             'j',
             'i',
         ];
-
         self::assertSame($expectedArray, (new CharsetConverter())->utf8_to_numberarray($string));
     }
 
-    /**
-     * Data provider for specialCharactersToAsciiConvertsUmlautsToAscii()
-     *
-     * @return string[][]
-     */
-    public static function validInputForSpecCharsToAscii(): array
+    public static function utf8CharMappingDataProvider(): array
     {
         return [
             'scandinavian input' => [
@@ -221,47 +66,10 @@ final class CharsetConverterTest extends UnitTestCase
         ];
     }
 
-    #[DataProvider('validInputForSpecCharsToAscii')]
+    #[DataProvider('utf8CharMappingDataProvider')]
     #[Test]
-    public function specCharsToAsciiConvertsUmlautsToAscii(
-        string $input,
-        string $expectedString
-    ): void {
-        $subject = new CharsetConverter();
-        self::assertSame($expectedString, $subject->specCharsToASCII('utf-8', $input));
-    }
-
-    /**
-     * Data provider for specialCharactersToAsciiConvertsInvalidInputToEmptyString()
-     *
-     * @return array[]
-     */
-    public static function invalidInputForSpecCharsToAscii(): array
+    public function utf8CharMapping(string $input, string $expectedString): void
     {
-        return [
-            'integer input' => [
-                1,
-            ],
-            'null input' => [
-                null,
-            ],
-            'boolean input' => [
-                true,
-            ],
-            'floating point input' => [
-                3.14,
-            ],
-        ];
-    }
-
-    /**
-     * @param mixed $input
-     */
-    #[DataProvider('invalidInputForSpecCharsToAscii')]
-    #[Test]
-    public function specCharsToAsciiConvertsInvalidInputToEmptyString($input): void
-    {
-        $subject = new CharsetConverter();
-        self::assertSame('', $subject->specCharsToASCII('utf-8', $input));
+        self::assertSame($expectedString, (new CharsetConverter())->utf8_char_mapping($input));
     }
 }

@@ -266,7 +266,7 @@ class PathUtility
      *
      * @see http://www.php.net/manual/en/function.pathinfo.php
      *
-     * @return string|string[]
+     * @return ($options is PATHINFO_ALL ? array{dirname?: string, basename?: string, extension?: string, filename?: string} : string)
      */
     public static function pathinfo(string $path, int $options = PATHINFO_ALL): string|array
     {
@@ -290,8 +290,8 @@ class PathUtility
         if (Environment::isWindows() && (substr($path, 1, 2) === ':/' || substr($path, 1, 2) === ':\\')) {
             return true;
         }
-        // Path starting with a / is always absolute, on every system, VFS is needed for tests
-        return str_starts_with($path, '/') || str_starts_with($path, 'vfs://');
+        // Path starting with a / is always absolute, on every system
+        return str_starts_with($path, '/');
     }
 
     /**

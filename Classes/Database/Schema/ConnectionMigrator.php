@@ -23,6 +23,7 @@ use Doctrine\DBAL\Platforms\MariaDBPlatform as DoctrineMariaDBPlatform;
 use Doctrine\DBAL\Platforms\MySQLPlatform as DoctrineMySQLPlatform;
 use Doctrine\DBAL\Platforms\PostgreSQLPlatform as DoctrinePostgreSQLPlatform;
 use Doctrine\DBAL\Platforms\SQLitePlatform as DoctrineSQLitePlatform;
+use Doctrine\DBAL\Schema\AbstractSchemaManager;
 use Doctrine\DBAL\Schema\Column;
 use Doctrine\DBAL\Schema\ForeignKeyConstraint;
 use Doctrine\DBAL\Schema\Index;
@@ -244,8 +245,10 @@ class ConnectionMigrator
             );
         }
 
+        $schemaManager = $this->connection->createSchemaManager();
+
         // Build the schema definitions
-        $fromSchema = $this->buildExistingSchemaDefinitions();
+        $fromSchema = $this->buildExistingSchemaDefinitions($schemaManager);
         $toSchema = $this->buildExpectedSchemaDefinitions($this->connectionName);
 
         // Add current table options to the fromSchema
@@ -261,7 +264,7 @@ class ConnectionMigrator
         }
 
         // Build SchemaDiff and handle renames of tables and columns
-        $comparator = GeneralUtility::makeInstance(Comparator::class, $this->connection->getDatabasePlatform());
+        $comparator = GeneralUtility::makeInstance(Comparator::class, $schemaManager->createComparator());
         $schemaDiff = $comparator->compareSchemas($fromSchema, $toSchema);
         if (! $schemaDiff instanceof Typo3SchemaDiff) {
             $schemaDiff = Typo3SchemaDiff::ensure($schemaDiff);
@@ -286,10 +289,10 @@ class ConnectionMigrator
         return $schemaDiff;
     }
 
-    protected function buildExistingSchemaDefinitions(): Schema
+    protected function buildExistingSchemaDefinitions(AbstractSchemaManager $schemaManager): Schema
     {
         $platform = $this->connection->getDatabasePlatform();
-        $schema = $this->connection->createSchemaManager()->introspectSchema();
+        $schema = $schemaManager->introspectSchema();
         // Only MySQL has variable length versions of TEXT/BLOB.
         // Move the platform into the foreach loop as soon as more normalization needs to be applied, taking it
         // now as early avoiding the loop.
@@ -1599,6 +1602,7 @@ class ConnectionMigrator
         array_walk($tables, function (Table &$table) use ($connection, $databasePlatform, $schemaConfig): void {
             $table->setSchemaConfig($schemaConfig);
             $this->normalizeTableIdentifiers($databasePlatform, $table);
+            $this->applyDefaultOptionsToTable($databasePlatform, $schemaConfig, $table);
             $this->applyDefaultPlatformOptionsToColumns($databasePlatform, $schemaConfig, $table);
             $this->normalizeDecimalTypeColumnDefaultValue($databasePlatform, $table);
             $this->normalizeTableForMariaDBOrMySQL($databasePlatform, $table);
@@ -1632,10 +1636,33 @@ class ConnectionMigrator
         );
     }
 
+    protected function applyDefaultOptionsToTable(AbstractPlatform $platform, SchemaConfig $schemaConfig, Table $table): void
+    {
+        $defaultTableOptions = $schemaConfig->getDefaultTableOptions();
+        $defaultColumnCollation = $defaultTableOptions['collation'] ?? null;
+        $defaultColumCharset = $defaultTableOptions['charset'] ?? null;
+        $defaultTableEngine = $defaultTableOptions['engine'] ?? 'InnoDB';
+
+        if ($platform instanceof DoctrineMariaDBPlatform || $platform instanceof DoctrineMySQLPlatform) {
+            if (!$table->hasOption('charset') && $defaultColumCharset !== null) {
+                $table->addOption('charset', $defaultColumCharset);
+            }
+            if (!$table->hasOption('collation') && $defaultColumnCollation !== null) {
+                $table->addOption('collation', $defaultColumnCollation);
+            }
+            if (!$table->hasOption('engine')) {
+                $table->addOption('engine', $defaultTableEngine);
+            }
+            if (!$table->hasOption('row_format')) {
+                $table->addOption('row_format', 'Dynamic');
+            }
+        }
+    }
+
     protected function applyDefaultPlatformOptionsToColumns(AbstractPlatform $platform, SchemaConfig $schemaConfig, Table $table): void
     {
         $defaultTableOptions = $schemaConfig->getDefaultTableOptions();
-        $defaultColumnCollation = $defaultTableOptions['collation'] ?? $defaultTableOptions['collate'] ?? '';
+        $defaultColumnCollation = $defaultTableOptions['collation'] ?? '';
         $defaultColumCharset = $defaultTableOptions['charset'] ?? '';
         foreach ($table->getColumns() as $column) {
             $columnType = $column->getType();

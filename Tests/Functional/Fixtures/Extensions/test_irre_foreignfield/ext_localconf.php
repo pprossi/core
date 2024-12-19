@@ -13,10 +13,7 @@ ExtensionUtility::configurePlugin(
     'Test',
     [
         QueueController::class => ['index'],
-        ContentController::class => ['list', 'show', 'new', 'create', 'edit', 'update', 'delete'],
+        ContentController::class => ['list', 'show'],
     ],
-    [
-        ContentController::class => ['create', 'update', 'delete'],
-    ],
-    ExtensionUtility::PLUGIN_TYPE_CONTENT_ELEMENT
+    [],
 );

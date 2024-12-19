@@ -140,7 +140,17 @@ readonly class TcaSchema implements SchemaInterface
     }
 
     /**
-     * @return ($capability is TcaSchemaCapability::Language ? Capability\LanguageAwareSchemaCapability : ($capability is TcaSchemaCapability::RestrictionRootLevel ? Capability\RootLevelCapability : ($capability is TcaSchemaCapability::EditLock ? Capability\FieldCapability : ($capability is TcaSchemaCapability::InternalDescription ? Capability\FieldCapability : ($capability is TcaSchemaCapability::RestrictionDisabledField ? Capability\FieldCapability : ($capability is TcaSchemaCapability::RestrictionStartTime ? Capability\FieldCapability : ($capability is TcaSchemaCapability::RestrictionEndTime ? Capability\FieldCapability : ($capability is TcaSchemaCapability::RestrictionUserGroup ? Capability\FieldCapability : ($capability is TcaSchemaCapability::PrependLabelTextAtCopy ? Capability\ScalarCapability : ($capability is TcaSchemaCapability::Label ? Capability\LabelCapability : Capability\SystemInternalFieldCapability)))))))))))
+     * @return ($capability is TcaSchemaCapability::Language ? Capability\LanguageAwareSchemaCapability
+     *          : ($capability is TcaSchemaCapability::RestrictionRootLevel ? Capability\RootLevelCapability
+     *          : ($capability is TcaSchemaCapability::EditLock ? Capability\FieldCapability
+     *          : ($capability is TcaSchemaCapability::InternalDescription ? Capability\FieldCapability
+     *          : ($capability is TcaSchemaCapability::RestrictionDisabledField ? Capability\FieldCapability
+     *          : ($capability is TcaSchemaCapability::RestrictionStartTime ? Capability\FieldCapability
+     *          : ($capability is TcaSchemaCapability::RestrictionEndTime ? Capability\FieldCapability
+     *          : ($capability is TcaSchemaCapability::RestrictionUserGroup ? Capability\FieldCapability
+     *          : ($capability is TcaSchemaCapability::PrependLabelTextAtCopy ? Capability\ScalarCapability
+     *          : ($capability is TcaSchemaCapability::Label ? Capability\LabelCapability
+     *          : Capability\SystemInternalFieldCapability))))))))))
      */
     public function getCapability(TcaSchemaCapability $capability): Capability\SchemaCapabilityInterface
     {
@@ -234,18 +244,6 @@ readonly class TcaSchema implements SchemaInterface
     {
         if (isset($this->schemaConfiguration['type']) && isset($this->fields[$this->schemaConfiguration['type']])) {
             return $this->fields[$this->schemaConfiguration['type']];
-        }
-        return null;
-    }
-
-    /**
-     * @deprecated Remove in v14, when "sub types" are removed altogether
-     * @internal "subtype" is not considered as API of TcaSchema
-     */
-    public function getSubTypeDivisorField(): ?FieldTypeInterface
-    {
-        if (isset($this->schemaConfiguration['subtype_value_field']) && isset($this->fields[$this->schemaConfiguration['subtype_value_field']])) {
-            return $this->fields[$this->schemaConfiguration['subtype_value_field']];
         }
         return null;
     }
